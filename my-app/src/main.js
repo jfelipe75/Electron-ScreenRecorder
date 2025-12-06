@@ -1,4 +1,8 @@
-import { app, BrowserWindow } from 'electron';
+import { app, BrowserWindow, ipcMain, desktopCapturer } from 'electron';
+/**app is used to control the lifecycle of the app
+ * and it uses an event based API 
+ * **/ 
+
 import path from 'node:path';
 import started from 'electron-squirrel-startup';
 
@@ -12,8 +16,33 @@ const createWindow = () => {
   const mainWindow = new BrowserWindow({
     width: 800,
     height: 600,
+    /**options object that configures how the renderer
+     * (the web page) inside my browserWindow behaves
+     * # I can think of it as setting for the mini browser
+     * that lives inside this window
+     */
     webPreferences: {
+
+       //nodeIntegration: true, 
+       /** --> your frontend code 
+       * can do anything a Node script can — including 
+       * accessing your whole computer. 
+       * That’s why it’s risky.**/
+
+      contextIsolation: true,
+      nodeIntegration: false,
       preload: path.join(__dirname, 'preload.js'),
+      /** preload.js, runs first, before my webpage 
+       * UI loads. It's a small setup file that prepares
+       * everything my frontend will need.
+       * 
+       * Instead of giving your UI full Node powers, 
+       * preload lets you choose:
+       * “My UI is only allowed to do these few safe things.”
+       * 
+       * Now the UI cannot touch the file system 
+       * directly. It must go through your safe API.
+      */
     },
   });
 
@@ -27,6 +56,14 @@ const createWindow = () => {
   // Open the DevTools.
   mainWindow.webContents.openDevTools();
 };
+
+// IPC handler for getting video sources
+ipcMain.handle('get-video-sources', async () => {
+  const inputSources = await desktopCapturer.getSources({
+    types: ['window', 'screen']
+  });
+  return inputSources;
+});
 
 // This method will be called when Electron has finished
 // initialization and is ready to create browser windows.
