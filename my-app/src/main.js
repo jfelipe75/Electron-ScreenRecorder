@@ -1,4 +1,5 @@
-import { app, BrowserWindow, ipcMain, desktopCapturer } from 'electron';
+import { app, BrowserWindow, ipcMain, desktopCapturer, Menu, dialog } from 'electron';
+import { writeFile } from 'fs/promises';
 /**app is used to control the lifecycle of the app
  * and it uses an event based API 
  * **/ 
@@ -62,7 +63,50 @@ ipcMain.handle('get-video-sources', async () => {
   const inputSources = await desktopCapturer.getSources({
     types: ['window', 'screen']
   });
-  return inputSources;
+  
+  // Extract only serializable properties (id and name)
+  // Remove non-serializable data like thumbnail and appIcon
+  return inputSources.map(source => ({
+    id: source.id,
+    name: source.name,
+  }));
+});
+
+// IPC handler for showing the menu with clickable items
+ipcMain.handle('show-menu', async (event, sources) => {
+  // Build menu template with click handlers
+  const menuTemplate = sources.map(source => {
+    return {
+      label: source.name,
+      click: () => {
+        // When clicked, send the selected source back to renderer
+        // The renderer will handle setting up the media stream
+        event.sender.send('source-selected', source);
+      }
+    };
+  });
+  
+  const menu = Menu.buildFromTemplate(menuTemplate);
+  menu.popup();
+  return true;
+});
+
+// IPC handler for saving video file
+ipcMain.handle('save-video', async (event, buffer) => {
+  const { filePath } = await dialog.showSaveDialog({
+    buttonLabel: 'Save video',
+    defaultPath: `vid-${Date.now()}.webm`,
+    filters: [
+      { name: 'WebM Video', extensions: ['webm'] }
+    ]
+  });
+
+  if (filePath) {
+    await writeFile(filePath, buffer);
+    return filePath;
+  }
+  
+  return null;
 });
 
 // This method will be called when Electron has finished
