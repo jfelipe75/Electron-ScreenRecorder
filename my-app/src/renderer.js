@@ -76,14 +76,22 @@ async function getVideoSources() {
 }
 let mediaRecorder; // MediaRecorder instance to capture footage
 const recordedChunks = [];
+let videoStream = null; // Store video stream reference
+let audioStream = null; // Store audio stream reference
+
 // This function will be called when a video source is selected
 async function selectSource(source) {
   console.log('Selected source:', source.name);
   console.log('Source ID:', source.id);
   
-  // Set up the media constraints for screen capture
-  const constraints = {
-    audio: false,
+  /**
+   * STEP 1: Get video stream (screen capture)
+   * WHAT: Captures the screen/window video
+   * HOW: Uses Electron's desktopCapturer with the selected source
+   * WHY: Separated from audio for better control and error handling
+   */
+  const videoConstraints = {
+    audio: false, // No audio in this stream
     video: {
       mandatory: {
         chromeMediaSource: 'desktop',
@@ -92,16 +100,64 @@ async function selectSource(source) {
     }
   };
   
-  // Get the media stream from the selected source
+  /**
+   * STEP 2: Get audio stream (microphone)
+   * WHAT: Captures audio from the default microphone
+   * HOW: Uses standard getUserMedia with audio constraints
+   * WHY: Separated so we can handle mic permissions/errors independently
+   */
+  const audioConstraints = {
+    audio: {
+      echoCancellation: true,
+      noiseSuppression: true,
+      sampleRate: 44100
+    },
+    video: false // No video in this stream
+  };
+  
+  // Get both streams with independent error handling
   try {
-    const stream = await navigator.mediaDevices.getUserMedia(constraints);
+    // Get video stream first
+    videoStream = await navigator.mediaDevices.getUserMedia(videoConstraints);
+    console.log('Video stream acquired');
     
-    // Set the video element's source to the stream
-    videoElement.srcObject = stream;
+    // Try to get audio stream (optional - recording continues even if this fails)
+    try {
+      audioStream = await navigator.mediaDevices.getUserMedia(audioConstraints);
+      console.log('Audio stream acquired');
+    } catch (audioError) {
+      console.warn('Could not access microphone:', audioError);
+      console.log('Continuing with video only');
+      audioStream = null;
+    }
+    
+    /**
+     * STEP 3: Combine streams
+     * WHAT: Merge video and audio tracks into one stream
+     * HOW: Create new MediaStream and add all tracks
+     * WHY: MediaRecorder needs a single stream with both video and audio tracks
+     */
+    const combinedStream = new MediaStream();
+    
+    // Add video tracks from screen capture
+    videoStream.getVideoTracks().forEach(track => {
+      combinedStream.addTrack(track);
+    });
+    
+    // Add audio tracks from microphone (if available)
+    if (audioStream) {
+      audioStream.getAudioTracks().forEach(track => {
+        combinedStream.addTrack(track);
+      });
+    }
+    
+    // Set the video element's source to the combined stream
+    videoElement.srcObject = combinedStream;
     videoElement.play();
-    // create media recorder
+    
+    // Create media recorder with the combined stream
     const options = { mimeType: 'video/webm; codecs=vp9'}
-    mediaRecorder = new MediaRecorder(stream, options)
+    mediaRecorder = new MediaRecorder(combinedStream, options)
 
     // register event handlers
     mediaRecorder.ondataavailable = handleDataAvailable;
@@ -137,12 +193,32 @@ async function selectSource(source) {
         console.error('Error saving video:', error);
       }
 
+      // Clean up streams
+      if (videoStream) {
+        videoStream.getTracks().forEach(track => track.stop());
+        videoStream = null;
+      }
+      if (audioStream) {
+        audioStream.getTracks().forEach(track => track.stop());
+        audioStream = null;
+      }
+
       // Clear recorded chunks for next recording
       recordedChunks.length = 0;
     }
-    console.log('Stream started successfully');
+    console.log('Stream started successfully with ' + 
+      (audioStream ? 'video and audio' : 'video only'));
   } catch (error) {
-    console.error('Error accessing media devices:', error);
+    console.error('Error accessing video stream:', error);
+    // Clean up any streams that were created
+    if (videoStream) {
+      videoStream.getTracks().forEach(track => track.stop());
+      videoStream = null;
+    }
+    if (audioStream) {
+      audioStream.getTracks().forEach(track => track.stop());
+      audioStream = null;
+    }
   }
 }
 
