@@ -13,5 +13,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getVideoSources: () => ipcRenderer.invoke('get-video-sources'),
   showMenu: (sources) => ipcRenderer.invoke('show-menu', sources),
   onSourceSelected: (callback) => ipcRenderer.on('source-selected', (_event, source) => callback(source)),
-  saveVideo: (buffer) => ipcRenderer.invoke('save-video', buffer)
+  saveVideo: (buffer) => ipcRenderer.invoke('save-video', buffer),
+  transcribeAudio: (audioBuffer) => ipcRenderer.invoke('transcribe-audio', audioBuffer)
 });

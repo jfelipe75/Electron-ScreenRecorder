@@ -1,5 +1,7 @@
 import { app, BrowserWindow, ipcMain, desktopCapturer, Menu, dialog } from 'electron';
 import { writeFile } from 'fs/promises';
+import fetch from 'node-fetch';
+import FormData from 'form-data';
 /**app is used to control the lifecycle of the app
  * and it uses an event based API 
  * **/ 
@@ -107,6 +109,35 @@ ipcMain.handle('save-video', async (event, buffer) => {
   }
   
   return null;
+});
+
+// IPC handler for transcribing audio via backend API
+ipcMain.handle('transcribe-audio', async (event, audioBuffer) => {
+  try {
+    // Create form data to send audio file
+    const formData = new FormData();
+    formData.append('audio', Buffer.from(audioBuffer), {
+      filename: 'recording.webm',
+      contentType: 'audio/webm'
+    });
+
+    // Send to backend server
+    const response = await fetch('http://localhost:8080/api/stt', {
+      method: 'POST',
+      body: formData,
+      headers: formData.getHeaders()
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    const data = await response.json();
+    return data; // { transcript: "...", parsedCommand: ... }
+  } catch (error) {
+    console.error('Transcription error:', error);
+    throw error;
+  }
 });
 
 // This method will be called when Electron has finished

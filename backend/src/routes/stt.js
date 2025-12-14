@@ -28,42 +28,43 @@ router.post("/stt", upload.single("audio"), async (req, res) => {
     }
 
     // Multer has put the raw file data into req.file.buffer as a Node Buffer.
-    // We'll use this to build a Blob that the OpenAI client can consume.
     const fileBuffer = req.file.buffer;
 
-    // In Node 18+, Blob is available globally.
-    // We wrap the buffer in a Blob and keep the original mime type (e.g. audio/webm).
-    const audioBlob = new Blob([fileBuffer], { type: req.file.mimetype });
+    // Create a File object (required by OpenAI SDK)
+    // File constructor: new File(bits, name, options)
+    const audioFile = new File(
+      [fileBuffer], 
+      'recording.webm',
+      { type: req.file.mimetype || 'audio/webm' }
+    );
+
+    console.log('Processing audio file:', {
+      size: fileBuffer.length,
+      mimeType: audioFile.type
+    });
 
     // Call the OpenAI Audio Transcriptions endpoint.
-    // - `file` is the Blob we just created from the uploaded audio.
-    // - `model` should be set to a valid audio model (e.g. "gpt-4o-transcribe" or "whisper-1").
-    //   Always double-check the current docs for the recommended model name.
     const transcription = await client.audio.transcriptions.create({
-      file: audioBlob, // TypeScript might complain, so we cast to any here.
-      model: "gpt-4o-transcribe", // or "whisper-1", depending on what you choose and docs.
-      // language: "en", // You can optionally specify the language if you want.
+      file: audioFile, 
+      model: "whisper-1", // Using whisper-1 (most stable model)
     });
 
     // The transcription response contains a `text` property with the transcribed speech.
     const text = transcription.text;
 
-    // At this point, you could send `text` to another function that parses
-    // the user's intent (create event, delete event, set reminder, etc.)
-    // Example:
-    // const parsed = await parseCommandWithLLM(text);
+    console.log('Transcription successful, length:', text.length);
 
-    // Send back the plain transcript (and in the future, maybe also the parsed command).
+    // Send back the plain transcript
     res.json({
       transcript: text,
-      // parsedCommand: parsed,
     });
   } catch (err) {
     // Log any errors to the server console for debugging.
     console.error("STT error:", err);
+    console.error("Error details:", err.message);
 
     // Return a generic 500 Internal Server Error if anything goes wrong.
-    res.status(500).json({ error: "Failed to transcribe audio" });
+    res.status(500).json({ error: "Failed to transcribe audio", details: err.message });
   }
 });
 

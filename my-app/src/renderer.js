@@ -273,6 +273,31 @@ async function selectSource(source) {
         console.error('Error saving video:', error);
       }
 
+      // Send audio to OpenAI for transcription
+      if (audioStream) {
+        try {
+          console.log('Sending audio for transcription...');
+          
+          // Create audio-only blob from the recorded chunks
+          const audioBlob = new Blob(recordedChunks, {
+            type: 'audio/webm'
+          });
+          
+          // Convert to buffer for IPC
+          const audioArrayBuffer = await audioBlob.arrayBuffer();
+          const audioBuffer = new Uint8Array(audioArrayBuffer);
+          
+          // Send to backend via IPC
+          const transcriptionResult = await window.electronAPI.transcribeAudio(audioBuffer);
+          
+          console.log('=== TRANSCRIPTION RESULT ===');
+          console.log('Transcript:', transcriptionResult.transcript);
+          console.log('===========================');
+        } catch (transcriptionError) {
+          console.error('Error transcribing audio:', transcriptionError);
+        }
+      }
+
       // Clean up streams
       if (videoStream) {
         videoStream.getTracks().forEach(track => track.stop());
